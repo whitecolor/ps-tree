@@ -3,7 +3,7 @@
 var spawn = require('child_process').spawn,
   es = require('event-stream');
 
-exports.default = function childrenOfPid(pid, callback) {
+module.exports = function childrenOfPid(pid, callback) {
   var headers = null;
 
   if (typeof callback !== 'function') {
@@ -119,4 +119,4 @@ function normalizeHeader(str) {
       throw new Error('Unknown process listing header: ' + str);
   }
 }
-module.exports = exports.default
+module.exports.default = module.exports
