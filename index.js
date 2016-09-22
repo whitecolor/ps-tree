@@ -3,17 +3,12 @@
 var spawn = require('child_process').spawn,
   es = require('event-stream');
 
-module.exports = function childrenOfPid(pid, callback) {
+function getAllProcesses(callback) {
   var headers = null;
 
   if (typeof callback !== 'function') {
     throw new Error('childrenOfPid(pid, callback) expects callback');
   }
-  
-  var pidIsArray = Array.isArray(pid)
-  var pids = pidIsArray ? pid : [pid]    
-  pids = pids.map(pid => pid.toString());
-
   //
   // The `ps-tree` module behaves differently on *nix vs. Windows
   // by spawning different programs and parsing their output.
@@ -72,22 +67,7 @@ module.exports = function childrenOfPid(pid, callback) {
 
       return cb(null, row);
     }),
-    es.writeArray(function (err, ps) {
-      var results = pids.map(function (pid) {
-        var parents = [pid],
-          children = [];
-
-        ps.forEach(function (proc) {
-          if (parents.indexOf(proc.PPID) !== -1) {
-            parents.push(proc.PID)
-            children.push(proc)
-          }
-        });
-        return children
-      })
-
-      callback(null, pidIsArray ? results : results[0]);
-    })
+    es.writeArray(callback)
   ).on('error', callback)
 }
 
@@ -119,4 +99,85 @@ function normalizeHeader(str) {
       throw new Error('Unknown process listing header: ' + str);
   }
 }
+
+function getChildren(pid, processesArray) {
+  var headers = null;
+
+  pid = pid.toString()
+  var parents = [pid],
+    children = [];
+
+  processesArray.forEach(function (proc) {
+    if (parents.indexOf(proc.PPID) !== -1) {
+      parents.push(proc.PID)
+      children.push(proc)
+    }
+  });
+  return children
+}
+
+function getParent(pid, processesArray) {
+  var headers = null;
+  
+  pid = pid.toString()
+
+  var proc = processesArray.filter(function (proc) {
+    return proc.PID == pid
+  });
+  return proc && proc.PPID
+}
+
+module.exports = function childrenOfPid(pid, callback) {
+  var headers = null;
+
+  if (typeof callback !== 'function') {
+    throw new Error('childrenOfPid(pid, callback) expects callback');
+  }
+
+  var pidIsArray = Array.isArray(pid)
+  var pids = pidIsArray ? pid : [pid]
+  pids = pids.map(pid => pid.toString());
+
+  getAllProcesses(function (err, processes) {
+    if (err) {
+      return callback(err)
+    }
+    var results = pids.map(function (pid) {
+      return getChildren(pid, processes)
+    })
+    callback(null, pidIsArray ? results : results[0]);
+  })
+}
+
+/**
+ * Normalizes the given header `str` from the Windows
+ * title to the *nix title.
+ *
+ * @param {string} str Header string to normalize
+ */
+function normalizeHeader(str) {
+  if (process.platform !== 'win32') {
+    return str;
+  }
+
+  switch (str) {
+    case 'Name':
+      return 'COMMAND';
+      break;
+    case 'ParentProcessId':
+      return 'PPID';
+      break;
+    case 'ProcessId':
+      return 'PID';
+      break;
+    case 'Status':
+      return 'STAT';
+      break;
+    default:
+      throw new Error('Unknown process listing header: ' + str);
+  }
+}
+module.exports.getParent = getParent
+module.exports.getChildren = getChildren
+module.exports.getAllProcesses = getAllProcesses
 module.exports.default = module.exports
